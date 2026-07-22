@@ -15,6 +15,17 @@ jobs:
     runs-on: ubuntu-latest
     name: Integration, Dependency Check and UI Testing
 
+    services:
+      sonarqube:
+        image: sonarqube:latest
+        ports:
+          - 9000:9000
+        options: >-
+          --health-cmd="curl -f http://localhost:9000/api/system/status || exit 1"
+          --health-interval=30s
+          --health-timeout=10s
+          --health-retries=10
+
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -75,3 +86,54 @@ jobs:
 
       - name: Run tests
         run: pytest web/tests/ -v
+
+      # ------------------------
+      # 5️⃣ SonarQube Scan
+      # ------------------------
+      - name: Wait for SonarQube to be ready
+        run: |
+          echo "Waiting for SonarQube to start..."
+          until curl -s http://localhost:9000/api/system/status | grep -q '"status":"UP"'; do
+            echo "SonarQube not ready yet, waiting 10s..."
+            sleep 10
+          done
+          echo "SonarQube is up!"
+
+      - name: Change default SonarQube password
+        run: |
+          curl -u admin:admin -X POST \
+            "http://localhost:9000/api/users/change_password" \
+            -d "login=admin&previousPassword=admin&password=admin123"
+
+      - name: Generate SonarQube token
+        run: |
+          TOKEN=$(curl -s -u admin:admin123 -X POST \
+            "http://localhost:9000/api/user_tokens/generate" \
+            -d "name=github-actions-token" | jq -r '.token')
+          echo "SONAR_TOKEN=$TOKEN" >> $GITHUB_ENV
+
+      - name: Install sonar-scanner
+        run: |
+          wget -q https://binaries.sonarsource.com/Distribution/sonar-scanner-cli/sonar-scanner-cli-5.0.1.3006-linux.zip
+          unzip -q sonar-scanner-cli-5.0.1.3006-linux.zip
+          echo "$PWD/sonar-scanner-5.0.1.3006-linux/bin" >> $GITHUB_PATH
+
+      - name: Run SonarQube Scan
+        run: |
+          sonar-scanner \
+            -Dsonar.projectKey=trial2 \
+            -Dsonar.sources=web \
+            -Dsonar.host.url=http://localhost:9000 \
+            -Dsonar.token=${{ env.SONAR_TOKEN }}
+
+      - name: Check SonarQube Quality Gate
+        run: |
+          sleep 10
+          STATUS=$(curl -s -u admin:admin123 \
+            "http://localhost:9000/api/qualitygates/project_status?projectKey=trial2" \
+            | jq -r '.projectStatus.status')
+          echo "Quality Gate Status: $STATUS"
+          if [ "$STATUS" = "ERROR" ]; then
+            echo "Quality Gate FAILED"
+            exit 1
+          fi
