@@ -1,38 +1,37 @@
 from flask import Flask, render_template, request, redirect, url_for
-import re
-import html
+import os
 
 app = Flask(__name__)
 
-# Basic regex patterns for detecting XSS or SQLi (not comprehensive but good for demonstration)
-def is_xss_attack(input_str):
-    xss_pattern = re.compile(r"<script.*?>.*?</script.*?>", re.IGNORECASE)
-    return bool(xss_pattern.search(input_str))
+# Load common passwords list at startup
+COMMON_PASSWORDS = set()
+wordlist_path = os.path.join(os.path.dirname(__file__), "10-million-password-list-top-1000.txt")
+if os.path.exists(wordlist_path):
+    with open(wordlist_path, "r", encoding="utf-8", errors="ignore") as f:
+        for line in f:
+            COMMON_PASSWORDS.add(line.strip().lower())
 
-def is_sql_injection(input_str):
-    sql_keywords = ['SELECT', 'INSERT', 'DELETE', 'UPDATE', 'DROP', '--', ';', "' OR '1'='1"]
-    for keyword in sql_keywords:
-        if keyword.lower() in input_str.lower():
-            return True
-    return False
+def validate_password(password):
+    if len(password) < 8:
+        return False, "Password must be at least 8 characters long."
+    if password.lower() in COMMON_PASSWORDS:
+        return False, "Password is too common. Please choose a stronger password."
+    return True, ""
 
 @app.route("/", methods=["GET", "POST"])
 def home():
+    error = None
     if request.method == "POST":
-        term = request.form.get("search_term", "")
-        if is_xss_attack(term):
-            return render_template("index.html", error="XSS attack detected! Input cleared.")
-        if is_sql_injection(term):
-            return render_template("index.html", error="SQL Injection detected! Input cleared.")
-        return redirect(url_for("result", term=term))
-    return render_template("index.html")
+        password = request.form.get("password", "")
+        is_valid, error = validate_password(password)
+        if is_valid:
+            return redirect(url_for("welcome", password=password))
+    return render_template("index.html", error=error)
 
-@app.route("/result")
-def result():
-    term = request.args.get("term", "")
-    # Sanitize to prevent reflected XSS
-    safe_term = html.escape(term)
-    return render_template("result.html", term=safe_term)
+@app.route("/welcome")
+def welcome():
+    password = request.args.get("password", "")
+    return render_template("welcome.html", password=password)
 
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=5000)
+    app.run(host="0.0.0.0", port=5000, debug=True)

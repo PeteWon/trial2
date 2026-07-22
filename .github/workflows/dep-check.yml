@@ -1,0 +1,77 @@
+name: CI Pipeline
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+  security-events: write
+
+jobs:
+  test-and-scan:
+    runs-on: ubuntu-latest
+    name: Integration, Dependency Check and UI Testing
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      # ------------------------
+      # 1️⃣ Python Setup
+      # ------------------------
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.10'
+
+      - name: Install dependencies
+        run: pip install -r web/requirements.txt
+
+      # ------------------------
+      # 2️⃣ pip-audit
+      # ------------------------
+      - name: Install pip-audit
+        run: pip install pip-audit
+
+      - name: Run pip-audit
+        run: pip-audit -r web/requirements.txt
+
+      # ------------------------
+      # 3️⃣ OWASP Dependency Check
+      # ------------------------
+      - name: OWASP Dependency-Check
+        uses: dependency-check/Dependency-Check_Action@main
+        with:
+          project: 'trial2'
+          path: 'web'
+          format: 'HTML'
+          out: 'reports'
+          args: >
+            --enableExperimental
+            --failOnCVSS 7
+            --enableRetired
+
+      - name: Upload OWASP DC report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: dependency-check-report
+          path: reports
+
+      # ------------------------
+      # 4️⃣ Integration + UI Testing
+      # ------------------------
+      - name: Install pytest and requests
+        run: pip install pytest requests flask
+
+      - name: Start Flask app
+        run: |
+          cd web
+          python app.py &
+          sleep 3
+
+      - name: Run tests
+        run: pytest web/tests/ -v

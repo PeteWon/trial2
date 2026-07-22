@@ -9,3 +9,7 @@ RUN apt-get update && apt-get install -y git && \
     rm -rf /var/lib/apt/lists/*
 
 COPY web /app
+
+RUN pip install -r /app/requirements.txt
+
+CMD ["python", "app.py"]
