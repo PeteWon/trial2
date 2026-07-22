@@ -124,7 +124,8 @@ jobs:
             -Dsonar.projectKey=trial2 \
             -Dsonar.sources=web \
             -Dsonar.host.url=http://localhost:9000 \
-            -Dsonar.token=${{ env.SONAR_TOKEN }}
+            -Dsonar.token=${{ env.SONAR_TOKEN }} \
+            -Dsonar.login=${{ env.SONAR_TOKEN }}
 
       - name: Check SonarQube Quality Gate
         run: |
